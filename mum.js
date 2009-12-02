@@ -7,9 +7,20 @@ var sys = require("sys");
 var MESSAGE_BACKLOG = 200;
 var SESSION_TIMEOUT = 60 * 1000;
 
-var channel = new function () {
+var Map = function () {
   var messages = [];
   var callbacks = [];
+  var puppies = [];
+
+  var self = this;
+
+  function sendToPuppies(message) {
+    var json = JSON.stringify(message);
+    sys.puts(json);
+    for( var i = 0, n = puppies.length; i < n; i++ ) {
+      puppies[i].sendBody(json, 'utf-8');
+    }
+  }
 
   this.appendMessage = function (nick, type, text) {
     var m = { nick: nick
@@ -30,15 +41,21 @@ var channel = new function () {
         break;
     }
 
-    messages.push( m );
-
-    while (callbacks.length > 0) {
-      callbacks.shift().callback([m]);
-    }
-
-    while (messages.length > MESSAGE_BACKLOG)
-      messages.shift();
+    sendToPuppies(m);
   };
+
+  this.addClientToUpdateCallbacks = function(res) {
+    res.sendHeader(200, [
+      ["Content-Type", "text/json"],
+      ["Transfer-Encoding", "chunked"],
+      ["Keep-Alive", "timeout=20, max=300"]
+    ]);
+
+    res.addListener('timeout', function() { sys.puts("connection timed out") });
+    res.addListener('eof', function() { sys.puts("connection eof'ed") });
+
+    puppies.push(res);
+  }
 
   this.query = function (since, callback) {
     var matching = [];
@@ -55,6 +72,11 @@ var channel = new function () {
     }
   };
 
+  // Heartbeat every 10 seconds
+  setInterval(function() {
+    self.appendMessage('server', 'msg', '<3');
+  }, 10000);
+
   // clear old callbacks
   // they can hang around for at most 30 seconds.
   setInterval(function () {
@@ -64,6 +86,25 @@ var channel = new function () {
     }
   }, 1000);
 };
+
+var maps = new function() {
+  var maps = {};
+
+  this.getOrCreateMap = function(id) {
+    if ( maps[id] == null ) {
+      maps[id] = new Map();
+    }
+
+    return maps[id];
+  }
+
+  this.deleteMap = function(id) {
+    var map = maps[id];
+    delete(maps[id]);
+
+    return map;
+  }
+}
 
 var sessions = {};
 
@@ -117,9 +158,35 @@ base.get("/style.css", base.staticHandler("style.css"));
 base.get("/client.js", base.staticHandler("client.js"));
 base.get("/jquery-1.2.6.min.js", base.staticHandler("jquery-1.2.6.min.js"));
 
+base.get('/map', function(req, res) {
+  var map = maps.getOrCreateMap(1);
+
+  sys.puts('got map 1');
+  sys.puts(map);
+  res.simpleText(200, map.toString());
+});
+
+base.get('/update', function(req, res) {
+  var map = maps.getOrCreateMap(1);
+  
+  map.addClientToUpdateCallbacks(res);
+});
+
+base.get('/foo', function(req, res) {
+  var map = maps.getOrCreateMap(1);
+
+  map.appendMessage('foo', 'msg', 'baz');
+  res.simpleText(200, '');
+});
 
 base.get("/who", function (req, res) {
   var nicks = [];
+  sys.puts(req.connection.remoteAddress);
+  sys.puts(req.headers);
+  for ( i in req.headers ) {
+    sys.puts(i + " -- " + req.headers[i]);
+  }
+
   for (var id in sessions) {
     if (!sessions.hasOwnProperty(id)) continue;
     var session = sessions[id];

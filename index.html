@@ -1,0 +1,30 @@
+<html>
+  <head>
+  </head>
+  <body>
+    <div id="plici"></div>
+    <script language="Javascript" src="http://ajax.googleapis.com/ajax/libs/jquery/1.3.2/jquery.js"></script>
+    <script language="Javascript">
+      (function() {
+        var plici = document.getElementById('plici');
+        var xhr = new XMLHttpRequest();
+        var buffer = '';
+
+        function handleResponse(text) {
+          var newData = text.substring(buffer.length);
+          buffer = text;
+          plici.innerHTML = newData;
+        }
+        xhr.open('GET', '/update', true);
+        xhr.onreadystatechange = function() {
+          console.log(arguments);
+          handleResponse(xhr.responseText);
+          console.log(xhr.readyState);
+        }
+
+        xhr.send();
+      })();
+    
+    </script>
+  </body>
+</html>
